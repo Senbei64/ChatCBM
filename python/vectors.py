@@ -317,9 +317,24 @@ def vec_attention(m, rng):
             c_array("in_zs", "signed char", zss), c_array("out_y", "int", y)]
 
 
+# ---- model.s: whole steps ----------------------------------------------------------------
+def vec_model(m, rng):
+    from chatcbm.generate import chat_prompt
+    from chatcbm.tokenizer import BOT, EOS, PAD, UNK, USER, Tokenizer
+    tok = Tokenizer.load(Path(MODELS) / "tokenizer.json")
+    prompt = chat_prompt(tok, "tell me a story about the bee and the horse")
+    m.reset(1)
+    for t in prompt:
+        z = m.step(np.array([t]))
+    greedy = list(m.generate(prompt, 12, (), (tok.id(PAD), tok.id(UNK), tok.id(BOT))))
+    return [f"#define PROMPT_LEN {len(prompt)}", c_array("prompt", "unsigned char", prompt),
+            c_array("out_z", "int", z[0]), f"#define GREEDY_LEN {len(greedy)}",
+            c_array("out_greedy", "unsigned char", greedy)]
+
+
 GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
               "layernorm": vec_layernorm, "gelu": vec_gelu, "residual": vec_residual, "logits": vec_logits,
-              "attention": vec_attention}
+              "attention": vec_attention, "model": vec_model}
 
 
 def main():
