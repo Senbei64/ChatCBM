@@ -16,6 +16,7 @@ import export
 from chatcbm import intengine
 
 ZERO = intengine.ZERO
+MODELS = "models"
 
 
 def c_array(name, ctype, vals):
@@ -250,8 +251,75 @@ def vec_logits(m, rng):
             c_array("in_kx", "int", kx), c_array("out_z", "int", out)]
 
 
+# ---- attention.s: one head over the KV cache ------------------------------------------
+def layer0_qkv(m, tokens):
+    """q, k, v of the first layer for a sequence: {name: (neg, e)} of shape (T, 32)."""
+    out = {n: ([], []) for n in "qkv"}
+    for pos, tok in enumerate(tokens):
+        h = log8_input(m, tok, pos)
+        for n in "qkv":
+            neg, L, zero = m.t.to_log(*m.linear(h, f"h0.attn.w{n}", f"h0.attn.b{n}"))
+            neg, e = intengine.enc_static(neg, L, zero, np.repeat(m.img["h0.K" + n], 8)[None])
+            out[n][0].append(neg[0])
+            out[n][1].append(e[0])
+    return {n: (np.array(a), np.array(b)) for n, (a, b) in out.items()}
+
+
+def head(m, q, k, v, zs):
+    """The attention head of intengine.IntModel.step for one query: q (8,), k and v (n, 8)."""
+    t, ZA = m.t, m.t.prod_attn
+    (qn, qe), (kn, ke), (vn, ve) = q, k, v
+    pr = np.where((qe[None] == ZERO) | (ke == ZERO), 0, ZA[qe[None] + ke])
+    z = intengine.shift(np.where(qn[None] ^ kn, -pr, pr).sum(-1), zs)
+    ez = z.max() - z
+    pw = np.where(ez > 16 * m.G, 0, t.pow2_16(16 * m.G - ez))
+    ea = ez + t.ilog16(pw.sum()) - 16 * m.G
+    ea = np.where(ea > 126, ZERO, ea)
+    pr = np.where((ea[:, None] == ZERO) | (ve == ZERO), 0, ZA[ea[:, None] + ve])
+    return np.where(vn, -pr, pr).sum(0)
+
+
+def random_codes(rng, n):
+    e = rng.integers(0, 127, (n, 8))
+    e[rng.random((n, 8)) < 0.1] = ZERO
+    return rng.integers(0, 2, (n, 8)).astype(bool), e
+
+
+def vec_attention(m, rng):
+    from chatcbm.generate import chat_prompt
+    from chatcbm.tokenizer import Tokenizer
+    tok = Tokenizer.load(Path(MODELS) / "tokenizer.json")
+    qkv = layer0_qkv(m, chat_prompt(tok, "tell me a story about the frog"))
+    n = len(qkv["q"][0])
+    cases = []
+    for hd, last in ((1, n - 1), (3, 0), (0, n // 2)):
+        sl = slice(8 * hd, 8 * hd + 8)
+        cases.append(((qkv["q"][0][last, sl], qkv["q"][1][last, sl]),
+                      (qkv["k"][0][:last + 1, sl], qkv["k"][1][:last + 1, sl]),
+                      (qkv["v"][0][:last + 1, sl], qkv["v"][1][:last + 1, sl]), int(m.img["h0.Zs"][hd])))
+    for count, zs in ((64, 3), (20, -2), (5, 0)):
+        qn, qe = random_codes(rng, 1)
+        cases.append(((qn[0], qe[0]), random_codes(rng, count), random_codes(rng, count), zs))
+    q, k, v, ns, zss, y = [], [], [], [], [], []
+    for (qn, qe), (kn, ke), (vn, ve), zs in cases:
+        kb, vb = np.zeros((8, 64), np.int64), np.zeros((64, 8), np.int64)
+        kb[:, :len(ke)] = log8_bytes(kn, ke).T
+        vb[:len(ve)] = log8_bytes(vn, ve)
+        q += list(log8_bytes(qn, qe))
+        k += list(kb.reshape(-1))
+        v += list(vb.reshape(-1))
+        ns.append(len(ke))
+        zss.append(zs)
+        y += list(head(m, (qn, qe), (kn, ke), (vn, ve), zs))
+    return [f"#define CASES {len(cases)}", c_array("prod_attn", "unsigned char", m.img["t.prod_attn"]),
+            c_array("in_q", "unsigned char", q), c_array("in_k", "unsigned char", k),
+            c_array("in_v", "unsigned char", v), c_array("in_n", "unsigned char", ns),
+            c_array("in_zs", "signed char", zss), c_array("out_y", "int", y)]
+
+
 GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
-              "layernorm": vec_layernorm, "gelu": vec_gelu, "residual": vec_residual, "logits": vec_logits}
+              "layernorm": vec_layernorm, "gelu": vec_gelu, "residual": vec_residual, "logits": vec_logits,
+              "attention": vec_attention}
 
 
 def main():
@@ -261,6 +329,8 @@ def main():
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    global MODELS
+    MODELS = args.models
     m = intengine.IntModel(intengine.load(Path(args.models) / "model_int.npz"))
     for name, gen in GENERATORS.items():
         text = header(name, gen(m, np.random.default_rng(2026)))

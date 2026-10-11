@@ -50,7 +50,7 @@ pytest:
 
 # 6502 unit tests on sim65: tests/unit/test_<name>.c against the vectors of the
 # Python engine, linked with the modules listed in UNIT_<name>
-UNIT_TESTS = prim matmul log8 linear layernorm gelu residual logits
+UNIT_TESTS = prim matmul log8 linear layernorm gelu residual logits attention
 UNIT_prim = prim
 UNIT_matmul = matmul buffers aligned
 UNIT_log8 = log8 prim buffers
@@ -59,6 +59,7 @@ UNIT_layernorm = layernorm prim buffers
 UNIT_gelu = gelu prim buffers
 UNIT_residual = residual prim buffers
 UNIT_logits = logits prim buffers
+UNIT_attention = attention prim
 
 unit: $(UNIT_TESTS:%=$(TEST)/%.ok)
 
