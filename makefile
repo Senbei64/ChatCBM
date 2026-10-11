@@ -1,7 +1,7 @@
 #- ChatCBM - Copyright 2026 Fabio Carignano ----------------------------------
 
 # main make targets
-.PHONY: all corpus clean
+.PHONY: all corpus train pytest clean
 
 # keep intermediate files
 .SECONDARY:
@@ -18,12 +18,21 @@ RMDIR = $(PYTHON) -c "import shutil, sys; [shutil.rmtree(d, True) for d in sys.a
 TOUCH = $(PYTHON) -c "import sys; open(sys.argv[1], 'w').close()"
 
 # - BUILD --------------------------------------------------------------------
-all:
+all: pytest
+
+# - TESTS --------------------------------------------------------------------
+# Python: hand-written backward pass, tokenizer
+pytest:
+	$(PYTHON) -m unittest discover -s python/tests -t python
 
 # - MODEL --------------------------------------------------------------------
 # training data: a small controlled world of animals (deterministic)
 corpus:
 	$(PYTHON) python/corpus.py
+
+# float32 model and tokenizer (about 5 minutes on a CPU)
+train: corpus
+	$(PYTHON) python/train.py
 
 # - CLEAN --------------------------------------------------------------------
 clean:
