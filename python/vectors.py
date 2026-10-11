@@ -20,7 +20,8 @@ ZERO = intengine.ZERO
 
 def c_array(name, ctype, vals):
     suffix = {"long": "L", "unsigned long": "UL", "unsigned": "u"}.get(ctype, "")
-    vals = [f"{int(v)}{suffix}" for v in np.asarray(vals).reshape(-1)]
+    vals = ["(-32767-1)" if ctype == "int" and int(v) == -32768 else f"{int(v)}{suffix}"
+            for v in np.asarray(vals).reshape(-1)]
     body = ",\n".join("    " + ",".join(vals[i:i + 16]) for i in range(0, len(vals), 16))
     return f"static const {ctype} {name}[{len(vals)}] = {{\n{body}\n}};"
 
@@ -131,7 +132,46 @@ def vec_log8(m, rng):
             c_array("out_k", "int", kx), c_array("in_K", "int", ks), c_array("out_enc", "unsigned char", enc)]
 
 
-GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8}
+# ---- linear.s: kernel sums + bias, with saturation -------------------------------
+def bias_terms(m, bname, kx, rows):
+    """The bias of a linear layer in the unit of the accumulator (intengine.IntModel.linear)."""
+    q, s = m.img[bname + ".i"][rows], m.img[bname + ".s"]
+    nq, Lq, zq = m.t.to_log(q, 0)
+    b = np.where(zq, 0, m.t.pow2_16(Lq + 16 * (m.F - s) - kx))
+    return np.where(nq, -b, b)
+
+
+def vec_linear(m, rng):
+    cases = [("h0.attn.wq", "h0.attn.bq", log8_input(m, 3, 0), 0),
+             ("h3.ffn.w2", "h3.ffn.b2", log8_input(m, 50, 20, "h3.ln2."), 0),
+             ("wte", "b_out", log8_input(m, 9, 4, "lnf."), 64),          # logits 64..95
+             ("h1.attn.wk", "h1.attn.bk", random_log8(rng), 0)]
+    sums, bias, kw, kx, j0, out, unit = [], [], [], [], [], [], []
+    for wname, bname, x, first in cases:
+        rows = np.arange(first, first + 32)
+        k = int(x[2][0, 0]) - (300 if wname == "h1.attn.wk" else 0)    # far scales saturate
+        x = (x[0], x[1], np.full((1, 1), k))
+        if wname == "wte":
+            sw, ew, kws = m.W["wte"]
+            m.W["wte_block"] = (sw[:, rows], ew[:, rows], kws[rows])
+            acc = kernel_sums(m, "wte_block", x)
+        else:
+            acc = kernel_sums(m, wname, x)
+            kws = m.img[wname + ".k"]
+        sums += list(acc)
+        bias += list(export.prep_bias(m.img[bname + ".i"], m.img[bname + ".s"], m.F, m.t)[rows])
+        kw += list(kws[rows])
+        kx.append(k)
+        j0.append(first)
+        out += list(intengine.sat16(acc + bias_terms(m, bname, k, rows)))
+        unit += list(k + kws[rows] - 16 * m.F)
+    return [f"#define CASES {len(cases)}", c_array("in_sum", "int", sums),
+            c_array("in_bias", "unsigned", bias), c_array("in_kw", "signed char", kw),
+            c_array("in_kx", "int", kx), c_array("in_j0", "int", j0),
+            c_array("out_acc", "int", out), c_array("out_unit", "int", unit)]
+
+
+GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear}
 
 
 def main():
