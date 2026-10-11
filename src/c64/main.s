@@ -3,7 +3,7 @@
 ; ChatCBM on the Commodore 64: the main program, with input and output through the kernal.
 ;
 ; Load with LOAD"CHATCBM",8 and start with RUN: the BASIC line is
-;   2026 SYS2083 REM CHATCBM: A TINY LLM
+;   2026 SYS2094 REM CHATCBM: A TINY LANGUAGE MODEL
 ;
 ; Memory: all 64 KB. Two modes:
 ;   kernal    $01 = $36: BASIC banked out, I/O and kernal visible, interrupts on. Only to read
@@ -63,9 +63,9 @@ ptr1:   .res 2
         .word $0801
 
         .segment "STARTUP"
-SYS_ADDR = 2083
-        .word stubend, 2026     ; 2026 SYS2083 REM CHATCBM: A TINY LLM
-        .byte $9E, .sprintf("%d", SYS_ADDR), " ", $8F, " CHATCBM: A TINY LLM", 0
+SYS_ADDR = 2094
+        .word stubend, 2026     ; 2026 SYS2094 REM CHATCBM: A TINY LANGUAGE MODEL
+        .byte $9E, .sprintf("%d", SYS_ADDR), " ", $8F, " CHATCBM: A TINY LANGUAGE MODEL", 0
 stubend:
         .word 0
 start:  .assert start = SYS_ADDR, lderror, "update SYS_ADDR in the BASIC line"
