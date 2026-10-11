@@ -1,7 +1,7 @@
 #- ChatCBM - Copyright 2026 Fabio Carignano ----------------------------------
 
 # main make targets
-.PHONY: all corpus train qat compile model evaluate chat test pytest unit clean
+.PHONY: all corpus train qat compile model evaluate chat test pytest unit system clean
 
 # keep intermediate files
 .SECONDARY:
@@ -36,17 +36,34 @@ $(OBJ)/%.o: src/%.s $(GEN)/stamp
 	$(MKDIR) $(OBJ)
 	ca65 -I $(GEN) --bin-include-dir $(GEN) -o $@ $<
 
+# the engine: every module of src/ except the machine-dependent main programs
+ENGINE = chat tokenizer model sampler matmul linear log8 layernorm gelu residual logits          attention prim buffers
+ENGINE_OBJ = $(ENGINE:%=$(OBJ)/%.o)
+
+# sim65: chat on stdin/stdout, or the file test of tests/e2e.py
+build/sim65/chatcbm.prg: $(OBJ)/sim65_main.o $(ENGINE_OBJ) src/sim65/sim65.cfg
+	$(MKDIR) build/sim65
+	cl65 -t sim6502 -C src/sim65/sim65.cfg -o $@ $(filter %.o,$^)
+
+$(OBJ)/sim65_main.o: src/sim65/main.c
+	$(MKDIR) $(OBJ)
+	cl65 -t sim6502 -c -O -o $@ $<
+
 # helpers of the unit tests written in assembler
 $(OBJ)/%.o: tests/unit/%.s
 	$(MKDIR) $(OBJ)
 	ca65 -o $@ $<
 
 # - TESTS --------------------------------------------------------------------
-test: pytest unit
+test: pytest unit system
 
 # Python: hand-written backward pass, tokenizer, integer engine
 pytest:
 	$(PYTHON) -m unittest discover -s python/tests -t python
+
+# end to end on sim65: the whole program answers as the Python engine
+system: build/sim65/chatcbm.prg
+	$(PYTHON) tests/e2e.py sim65
 
 # 6502 unit tests on sim65: tests/unit/test_<name>.c against the vectors of the
 # Python engine, linked with the modules listed in UNIT_<name>
@@ -71,9 +88,9 @@ $(OBJ)/test_%.o: tests/unit/test_%.c tests/unit/check.h $(GEN)/stamp
 	cl65 -t sim6502 -c -O -I $(GEN) -o $@ $<
 
 .SECONDEXPANSION:
-$(TEST)/%.prg: $(OBJ)/test_%.o $$(addprefix $(OBJ)/,$$(addsuffix .o,$$(UNIT_$$*))) tests/sim65.cfg
+$(TEST)/%.prg: $(OBJ)/test_%.o $$(addprefix $(OBJ)/,$$(addsuffix .o,$$(UNIT_$$*))) src/sim65/sim65.cfg
 	$(MKDIR) $(TEST)
-	cl65 -t sim6502 -C tests/sim65.cfg -o $@ $(filter %.o,$^)
+	cl65 -t sim6502 -C src/sim65/sim65.cfg -o $@ $(filter %.o,$^)
 
 $(TEST)/%.ok: $(TEST)/%.prg
 	sim65 $<
