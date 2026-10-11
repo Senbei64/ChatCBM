@@ -50,9 +50,10 @@ pytest:
 
 # 6502 unit tests on sim65: tests/unit/test_<name>.c against the vectors of the
 # Python engine, linked with the modules listed in UNIT_<name>
-UNIT_TESTS = prim matmul
+UNIT_TESTS = prim matmul log8
 UNIT_prim = prim
 UNIT_matmul = matmul buffers aligned
+UNIT_log8 = log8 prim buffers
 
 unit: $(UNIT_TESTS:%=$(TEST)/%.ok)
 

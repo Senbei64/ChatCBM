@@ -94,7 +94,44 @@ def vec_matmul(m, rng):
             c_array("out_acc", "int", acc)]
 
 
-GENERATORS = {"prim": vec_prim, "matmul": vec_matmul}
+# ---- log8.s: to_log8 (dynamic scale) and enc_static (static scale per head) --------
+def acc_cases(m, rng):
+    """(acc, unit) pairs of 32 elements: LayerNorm and linear outputs of the model, random
+    values with zeros, all zeros."""
+    x = embed(m, 7, 3)
+    ln = m.layernorm(x, "h0.ln1.")
+    lin = m.linear(m.to_log8(ln), "h0.attn.wq", "h0.attn.bq")
+    acc = rng.integers(-32768, 32768, (1, 32))
+    acc[0, rng.choice(32, 5, replace=False)] = 0
+    rand = (acc, rng.integers(-300, 100, (1, 32)))
+    zero = (np.zeros((1, 32), np.int64), np.full((1, 32), -50))
+    return [tuple(np.broadcast_to(a, (1, 32)) for a in c) for c in (ln, lin, rand, zero)]
+
+
+def log8_bytes(neg, e):
+    return np.where(e == ZERO, ZERO, e | (neg.astype(np.int64) << 7))
+
+
+def vec_log8(m, rng):
+    cases = acc_cases(m, rng)
+    acc, unit, xs, xe, kx, ks, enc = [], [], [], [], [], [], []
+    for i, (a, u) in enumerate(cases):
+        neg, e, k = intengine.enc_dynamic(*m.t.to_log(a, u))
+        acc += list(a[0])
+        unit += list(u[0])
+        xs += list(np.where(neg[0], 128, 0))          # the sign stays even when e becomes zero
+        xe += list(e[0])
+        kx.append(int(k[0, 0]))
+        K = m.img[f"h{i % m.cfg.n_layer}.Kq"] if i < 2 else rng.integers(-100, 100, 4)
+        ks += list(K)
+        n, L, z = m.t.to_log(a, u)
+        enc += list(log8_bytes(*intengine.enc_static(n, L, z, np.repeat(K, 8)[None]))[0])
+    return [f"#define CASES {len(cases)}", c_array("in_acc", "int", acc), c_array("in_unit", "int", unit),
+            c_array("out_s", "unsigned char", xs), c_array("out_e", "unsigned char", xe),
+            c_array("out_k", "int", kx), c_array("in_K", "int", ks), c_array("out_enc", "unsigned char", enc)]
+
+
+GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8}
 
 
 def main():
