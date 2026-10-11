@@ -1,0 +1,11 @@
+#- ChatCBM - Copyright 2026 Fabio Carignano ----------------------------------
+
+# build output: PRG files, objects, generated includes, test results
+build/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+
+#-----------------------------------------------------------------------------
