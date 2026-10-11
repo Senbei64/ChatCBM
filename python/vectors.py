@@ -199,8 +199,59 @@ def vec_layernorm(m, rng):
             c_array("out_acc", "int", acc), c_array("out_unit", "int", unit)]
 
 
+# ---- gelu.s, residual.s, logits.s ---------------------------------------------------
+def vec_gelu(m, rng):
+    h = log8_input(m, 30, 2, "h1.ln2.")
+    cases = [m.linear(h, "h1.ffn.w1", "h1.ffn.b1"),
+             (rng.integers(-300, 300, (1, 32)), np.full((1, 32), -16 * m.gf)),      # around the table
+             (rng.integers(-32768, 32768, (1, 32)), rng.integers(-200, -60, (1, 32)))]
+    acc, unit, out = [], [], []
+    for a, u in cases:
+        g, _ = m.gelu((a, u))
+        acc += list(a[0])
+        unit += list(np.broadcast_to(u, (1, 32))[0])
+        out += list(g[0])
+    return [f"#define CASES {len(cases)}", c_array("table", "int", m.img["t.gelu"]),
+            c_array("in_acc", "int", acc), c_array("in_unit", "int", unit), c_array("out_acc", "int", out)]
+
+
+def vec_residual(m, rng):
+    h = log8_input(m, 11, 7)
+    lin = m.linear(h, "h0.attn.wo", "h0.attn.bo")
+    cases = [(embed(m, 11, 7), lin),
+             (rng.integers(-32768, 32768, (1, 32)), (rng.integers(-32768, 32768, (1, 32)), rng.integers(-250, -80, (1, 32)))),
+             (np.full((1, 32), 32000), (np.full((1, 32), 20000), np.full((1, 32), -100)))]   # saturation
+    x, acc, unit, out = [], [], [], []
+    for xi, (a, u) in cases:
+        x += list(xi[0])
+        acc += list(a[0])
+        unit += list(np.broadcast_to(u, (1, 32))[0])
+        out += list(intengine.sat16(xi + m.to_resid((a, u)))[0])
+    return [f"#define CASES {len(cases)}", c_array("in_x", "int", x), c_array("in_acc", "int", acc),
+            c_array("in_unit", "int", unit), c_array("out_x", "int", out)]
+
+
+def vec_logits(m, rng):
+    cases = []
+    for tok, pos in ((5, 3), (120, 40)):
+        h = log8_input(m, tok, pos, "lnf.")
+        acc, _ = m.linear(h, "wte", "b_out")
+        cases.append((acc, int(h[2][0, 0])))
+    cases.append((rng.integers(-8000, 8000, (1, 256)), cases[0][1]))
+    kw = m.img["wte.k"]
+    acc, kx, out = [], [], []
+    for a, k in cases:
+        z = m.t.to_fixed(*m.t.to_log(a, k + kw[None] - 16 * m.F + m.img["Zl"]), 0)
+        assert np.abs(z).max() < 32768
+        acc += list(a[0])
+        kx.append(k)
+        out += list(z[0])
+    return [f"#define CASES {len(cases)}", c_array("kw", "signed char", kw), c_array("in_acc", "int", acc),
+            c_array("in_kx", "int", kx), c_array("out_z", "int", out)]
+
+
 GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
-              "layernorm": vec_layernorm}
+              "layernorm": vec_layernorm, "gelu": vec_gelu, "residual": vec_residual, "logits": vec_logits}
 
 
 def main():
