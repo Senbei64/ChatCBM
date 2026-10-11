@@ -42,12 +42,12 @@ QUESTIONS = [
 ]
 
 
-def expected_answers(models):
+def expected_answers(models, questions):
     tok = Tokenizer.load(models / "tokenizer.json")
     m = intengine.IntModel(intengine.load(models / "model_int.npz"))
     stop, banned = (tok.id(EOS), tok.id(USER)), (tok.id(PAD), tok.id(UNK), tok.id(BOT))
     lines = []
-    for q in QUESTIONS:
+    for q in questions:
         for sampler in (None, intengine.IntSampler(0.6, 0.9, SEED)):
             out = m.generate(chat_prompt(tok, q), MAX_NEW, stop, banned, sampler)
             # as chat.py and the 6502: the leading spaces of the first token are not printed
@@ -77,13 +77,15 @@ def main():
     ap.add_argument("--models", default=str(ROOT / "models"))
     ap.add_argument("--vice", default="x64sc", help="VICE C64 emulator")
     ap.add_argument("--screenshot", action="store_true", help="save the final C64 screen (screen.png)")
+    ap.add_argument("-q", "--question", action="append", help="ask this instead of the test questions")
     args = ap.parse_args()
 
     work = ROOT / "build" / "e2e" / args.target
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
-    (work / "questions").write_text("\n".join(QUESTIONS) + "\n", encoding="ascii", newline="\n")
-    expected = expected_answers(Path(args.models))
+    questions = args.question or QUESTIONS
+    (work / "questions").write_text("\n".join(questions) + "\n", encoding="ascii", newline="\n")
+    expected = expected_answers(Path(args.models), questions)
     (work / "expected").write_text(expected, encoding="ascii", newline="\n")
 
     if args.target == "sim65":

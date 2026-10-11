@@ -329,15 +329,20 @@ _io_flush:
         bne :+
         jmp fdone
 :       lda raw                 ; test: the token as it is, ASCII, to the open file
-        beq :+
+        beq fscreen
 fraw:   lda tbuf,x
         jsr CHROUT
         inx
         cpx tlen
         bcc fraw
-        jsr CLRCHN              ; and then to the screen as well
+        lda raw                 ; 2: file only
+        cmp #2
+        bne :+
+        jmp fdone
+:       jsr CLRCHN              ; 1: to the screen as well
         ldx #0
-:       lda tbuf                ; on screen, wrapping between words
+fscreen:
+        lda tbuf                ; on screen, wrapping between words
         cmp #' '
         bne fcont
         lda #0                  ; a new word
@@ -347,10 +352,12 @@ fraw:   lda tbuf,x
         adc col
         cmp #COLS               ; keep the last column free for punctuation
         bcs fwrap
+        inx                     ; the space, unless the line has just started
+        lda col
+        beq fprint
         lda #' '
         jsr CHROUT
         inc col
-        inx
         bne fprint
 fwrap:  lda #13                 ; a new line instead of the space
         jsr CHROUT
@@ -472,8 +479,6 @@ ftest:  lda #fqname_end - fqname
         ldy #3
         jsr SETLFS
         jsr OPEN
-        lda #1
-        sta raw
 fnext:  ldx #2                  ; one line of the file (ending with $0A or $0D)
         jsr CHKIN
         ldx #0
@@ -509,9 +514,17 @@ fend:   lda #3
         jsr CLOSE
         .byte $02               ; JAM
 
-; one turn on the line just read, answer to ANSWERS: A = temperature on
+; one turn on the line just read, answer to ANSWERS: A = temperature on. The greedy answer
+; goes to the file only, the sampled one to the screen as well, as in a normal chat.
 fturn:  sta _temp_on
-        lda #<you               ; on screen too, to look at it
+        cmp #0
+        bne :+
+        lda #2                  ; greedy: file only
+        sta raw
+        bne fgo
+:       lda #1                  ; sampled: file and screen
+        sta raw
+        lda #<you
         ldx #>you
         jsr puts
         lda #<line
@@ -526,7 +539,7 @@ fturn:  sta _temp_on
         sta col
         lda #0
         sta wlen
-        lda #<TEST_SEED
+fgo:    lda #<TEST_SEED
         sta _rng_state
         lda #>TEST_SEED
         sta _rng_state+1
@@ -543,8 +556,11 @@ fturn:  sta _temp_on
         lda #$0A
         jsr CHROUT
         jsr CLRCHN
+        lda _temp_on            ; end of the line on screen
+        beq :+
         lda #13
         jmp CHROUT
+:       rts
 
 fqname: .byte "QUESTIONS,S,R"
 fqname_end:
@@ -556,7 +572,7 @@ faname_end:
 banner: .byte 14, 8, 147        ; lower case, no shift+C= switch, clear the screen
         .byte "ChatCBM: a tiny language model.", 13
         .byte "Ask about the animals or a story.", 13
-        .byte "Each word piece takes about 2 seconds.", 13, 0
+        .byte "Each word piece takes about 2.5 seconds.", 13, 0
 you:    .byte 13, "you> ", 0
 bot:    .byte "bot> ", 0
 toolong: .byte "(too long)", 0
@@ -576,6 +592,6 @@ border: .res 1
 seeded: .res 1
 fast:   .res 1                  ; /f: screen off while computing
 tt0:    .res 1
-raw:    .res 1                  ; 1: tokens as ASCII to a file (test)
+raw:    .res 1                  ; test: 1 tokens to the file and the screen, 2 to the file only
 
 ;-----------------------------------------------------------------------------
