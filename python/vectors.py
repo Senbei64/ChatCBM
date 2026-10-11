@@ -354,7 +354,39 @@ def vec_tokenizer(m, rng):
             c_array("out_ids", "unsigned char", ids), c_array("out_len", "unsigned char", lens)]
 
 
-GENERATORS = {"prim": vec_prim, "tokenizer": vec_tokenizer, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
+# ---- sampler.s ----------------------------------------------------------------------------
+DRAWS = 6
+
+
+def vec_sampler(m, rng):
+    from chatcbm.generate import chat_prompt
+    from chatcbm.tokenizer import BOT, PAD, UNK, Tokenizer
+    tok = Tokenizer.load(Path(MODELS) / "tokenizer.json")
+    banned = [tok.id(PAD), tok.id(UNK), tok.id(BOT)]
+    zs = []
+    for q in ("tell me a story", "what color is the frog?", "hi"):
+        m.reset(1)
+        for t in chat_prompt(tok, q):
+            z = m.step(np.array([t]))
+        zs.append(z[0])
+    zs.append(rng.integers(-3000, 3000, 256))                    # flat: many tokens in the top-p
+    zs.append(np.where(np.arange(256) == 77, 2000, -2000))       # one clear winner
+    seeds = [2026, 1, 123456789, 42, 7]
+    z_in, seed_in, best, draws = [], [], [], []
+    for z, seed in zip(zs, seeds):
+        zb = z.copy()
+        zb[banned] = intengine.NEG_INF
+        sampler = intengine.IntSampler(0.6, 0.9, seed)
+        z_in += list(z)
+        seed_in.append(seed)
+        best.append(int(np.argmax(zb)))
+        draws += [sampler(zb) for _ in range(DRAWS)]
+    return [f"#define CASES {len(zs)}", f"#define DRAWS {DRAWS}", c_array("in_z", "int", z_in),
+            c_array("in_seed", "unsigned long", seed_in), c_array("out_argmax", "unsigned char", best),
+            c_array("out_draws", "unsigned char", draws)]
+
+
+GENERATORS = {"prim": vec_prim, "tokenizer": vec_tokenizer, "sampler": vec_sampler, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
               "layernorm": vec_layernorm, "gelu": vec_gelu, "residual": vec_residual, "logits": vec_logits,
               "attention": vec_attention, "model": vec_model}
 

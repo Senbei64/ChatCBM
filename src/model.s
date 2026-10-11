@@ -4,7 +4,6 @@
 ;
 ;   void model_init(void);                  aligned tables from the image (call once)
 ;   void __fastcall__ model_step(unsigned);  A = token, X = position; output: _acc = logits z
-;   unsigned char argmax(void);              token with the highest logit (not PAD, UNK, BOT)
 ;
 ; Step: embeddings (token + position), then for every layer
 ;   LayerNorm -> log8 -> q, k, v -> k and v into the KV cache -> 4 attention heads -> log8
@@ -22,7 +21,7 @@
 ; The pointers of each layer are in layer_desc (desc.inc, written by python/export.py),
 ; DESC_W words per layer in the order of the D_* constants; the final ones in final_desc.
 ;
-        .export _model_init, _model_step, _argmax, _kv_only, _layer_hook, _img
+        .export _model_init, _model_step, _kv_only, _layer_hook, _img
         .import _matmul, _lin_post, _to_log8, _resid_add, _logits_fix, _layernorm
         .import _enc_static, _gelu, _att_head, _pow2_16
         .import _lin_bias, _lin_kw, _lin_j0, _lin_unit, _ln_g, _ln_b, _ln_kg, _logit_kw
@@ -339,61 +338,6 @@ _model_init:
         sta _gelu_table
         lda #>(_img + OFF_T_GELU)
         sta _gelu_table+1
-        rts
-
-; ---- argmax: the highest logit; on ties the first one (as np.argmax) ----------------
-_argmax:
-        lda #<_acc
-        sta sp2
-        lda #>_acc
-        sta sp2+1
-        lda #$00
-        sta ee
-        lda #$80
-        sta ee+1                ; maximum = -32768
-        lda #0
-        sta lw                  ; best
-        sta hh                  ; j
-pk1:    lda hh
-        cmp #TOK_PAD
-        beq pknext
-        cmp #TOK_UNK
-        beq pknext
-        cmp #TOK_BOT
-        beq pknext
-        ldy #0
-        lda (sp2),y             ; z > maximum (signed)?
-        cmp ee
-        iny
-        lda (sp2),y
-        sbc ee+1
-        bvc :+
-        eor #$80
-:       bmi pknext
-        beq pkeq                ; it may be equal: compare the low bytes
-pkset:  ldy #0
-        lda (sp2),y
-        sta ee
-        iny
-        lda (sp2),y
-        sta ee+1
-        lda hh
-        sta lw
-        jmp pknext
-pkeq:   ldy #0                  ; high difference 0: z - max in 0..255, z = max only if
-        lda (sp2),y             ; the low bytes are equal too
-        cmp ee
-        bne pkset
-pknext: clc
-        lda sp2
-        adc #2
-        sta sp2
-        bcc :+
-        inc sp2+1
-:       inc hh
-        bne pk1
-        lda lw
-        ldx #0
         rts
 
 ; Z = 1 if _kv_only and this is the last layer
