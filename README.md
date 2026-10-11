@@ -2,6 +2,8 @@
 
 A tiny language model that chats on a Commodore 64.
 
+![build](https://github.com/Senbei64/ChatCBM/actions/workflows/build.yaml/badge.svg)
+
 ![ChatCBM in VICE](img/c64.png)
 
 ChatCBM is a project created and maintained by Fabio Carignano: a decoder-only transformer
