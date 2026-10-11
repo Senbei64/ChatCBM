@@ -65,6 +65,9 @@ VICE: `x64sc -autostartprgmode 1 -autostart build/c64/chatcbm.prg`. Type a quest
 RETURN; `/f` toggles the fast mode, `/q` resets the machine. On a PC, `make chat` talks to
 the same integer engine in Python.
 
+Tested in VICE and on a Commodore 64 Ultimate; at its 64 MHz turbo the answers come word by
+word, like on a teletype.
+
 ## Build and test
 
 Requirements: [cc65](https://cc65.github.io/) 2.19, Python 3 with NumPy, GNU make, and
