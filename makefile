@@ -1,7 +1,7 @@
 #- ChatCBM - Copyright 2026 Fabio Carignano ----------------------------------
 
 # main make targets
-.PHONY: all corpus train qat compile model evaluate pytest clean
+.PHONY: all corpus train qat compile model evaluate chat pytest clean
 
 # keep intermediate files
 .SECONDARY:
@@ -50,6 +50,10 @@ model: train
 # float32 and integer engine on every fact and on sampled stories (a few minutes)
 evaluate:
 	$(PYTHON) python/evaluate.py
+
+# chat with the integer engine on the PC
+chat:
+	$(PYTHON) python/chat.py
 
 # - CLEAN --------------------------------------------------------------------
 clean:
