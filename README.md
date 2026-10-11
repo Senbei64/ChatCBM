@@ -4,10 +4,11 @@ A tiny language model that chats on a Commodore 64.
 
 ![ChatCBM in VICE](img/c64.png)
 
-ChatCBM is a decoder-only transformer with 36,416 parameters, written from scratch:
-training in Python with NumPy, inference in 6502 assembly. On the C64 the model takes 23 KB,
-the whole program 37 KB, and it produces a token (a word or a piece of a word) about every
-2.5 seconds. Its answers are bit for bit those of the Python integer engine that specifies it.
+ChatCBM is a project created and maintained by Fabio Carignano: a decoder-only transformer
+with 36,416 parameters, written from scratch, trained in Python with NumPy and run in 6502
+assembly. On the C64 the model takes 23 KB, the whole program 37 KB, and it produces a token
+(a word or a piece of a word) about every 2.5 seconds. Its answers are bit for bit those of
+the Python integer engine that specifies it.
 
 It knows a small world: 16 animals with their color, home, food, sound, habits, size and legs.
 It answers questions about them (*what does the fox eat?*, *is the pig pink?*, *which is
@@ -18,10 +19,11 @@ short stories about one or two animals.
 
 - The idea comes from the video [Let's build a tiny language model](https://youtu.be/YmLp8qe87A0):
   a transformer small enough to understand, trained on a small controlled world.
-- The numbers inside the engine come from the author's experiments on removing
-  multiplications from 3D graphics on the 6502. Values are stored as logarithms (log8: a sign
-  and a 7-bit exponent), a product becomes the sum of two exponents and a 256-byte table turns
-  it back into a linear value. Here the same idea computes the neuron matrices.
+- The number format inside the engine is Fabio Carignano's own idea, from his earlier
+  experiments on removing multiplications from 3D graphics on the 6502. Values are stored as
+  logarithms (log8: a sign and a 7-bit exponent), a product becomes the sum of two exponents
+  and a 256-byte table turns it back into a linear value. Here the same idea computes the
+  neuron matrices.
 - The development was assisted by AI (Claude, by Anthropic): design discussions, code, tests
   and measurements.
 

@@ -8,7 +8,7 @@
 ;
 ; Multiplying two log8 values means adding their exponents; PROD[e] = 2^(F - e/16) turns the
 ; sum back into a linear product, so a dot product is lookups and additions only. The trick
-; (from the author's 2018 notes, "exp with bias"): for a whole input row the table pointer tp
+; (from Fabio Carignano's 2018 notes, "exp with bias"): for a whole input row the table pointer tp
 ; is moved by the input exponent, tp = PROD + xe_i, so product and conversion are a single
 ; ADC/SBC (tp),Y with Y = weight exponent.
 ;

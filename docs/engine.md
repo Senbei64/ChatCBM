@@ -25,7 +25,7 @@ Two primitives turn between the domains: `ilog16(v)` ≈ 16·log2 v (leading zer
 `src/matmul.s` multiplies 32 log8 inputs by a 32 × 32 block of packed nf4 weights, about 30
 cycles per product:
 
-- **Table pointer moved by the input exponent** (from the author's 2018 notes, "exp with
+- **Table pointer moved by the input exponent** (from Fabio Carignano's 2018 notes, "exp with
   bias"). For a whole input row the pointer is `tp = PROD + e_x`, so product and conversion
   are a single `ADC/SBC (tp),Y` with Y = weight exponent.
 - **Free signs**: the weight sign is bit 7 of its log8 byte, and `LDY` sets the N flag.

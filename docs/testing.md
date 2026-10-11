@@ -38,7 +38,7 @@ seed 2026. The program writes its own to `answers`:
 
 - **sim65.** `sim65 chatcbm.prg questions answers`.
 - **VICE.** Drive 8 is the host directory (`+drive8truedrive -busdevice8 -fs8 <dir>`, as in
-  the author's [VIC20UnitTests](https://github.com/Senbei64/VIC20UnitTests)). The test build
+  [VIC20UnitTests](https://github.com/Senbei64/VIC20UnitTests)). The test build
   `chatcbm-test.prg` opens `QUESTIONS` and `ANSWERS` with the kernal file routines, shows the
   sampled answers on screen and ends with a JAM instruction, so with `-jamaction 5` VICE quits.
   `--screenshot` saves the final screen.
