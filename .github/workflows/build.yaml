@@ -22,4 +22,11 @@ jobs:
       - name: Build and test
         run: make
 
+      - name: Upload the C64 program
+        uses: actions/upload-artifact@v6
+        with:
+          name: ChatCBM-C64
+          path: |
+            build/c64/chatcbm.prg
+
 #-----------------------------------------------------------------------------
