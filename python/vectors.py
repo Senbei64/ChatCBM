@@ -332,7 +332,29 @@ def vec_model(m, rng):
             c_array("out_greedy", "unsigned char", greedy)]
 
 
-GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
+# ---- tokenizer.s ----------------------------------------------------------------------
+QUESTIONS = ["what color is the frog?", "  Is the PIG pink?!  ", "hello_world 42, the dog's bone...",
+             "hi", "", "\tWHICH is bigger,\n the fox or the owl?", "tell me a story about the bee and the horse",
+             "x" * 119, "x" * 121, "a " * 40]
+
+
+def vec_tokenizer(m, rng):
+    from chatcbm.generate import chat_prompt
+    from chatcbm.tokenizer import Tokenizer
+    tok = Tokenizer.load(Path(MODELS) / "tokenizer.json")
+    text, ids, lens = [], [], []
+    for q in QUESTIONS:
+        p = chat_prompt(tok, q)
+        normalized = len(" " + " ".join(q.split()))
+        fits = normalized <= 120 and len(p) <= m.cfg.context - 1
+        text += list(q.encode("ascii")) + [0]
+        ids += (p if fits else []) + [0] * (64 - (len(p) if fits else 0))
+        lens.append(len(p) if fits else 0)          # 0 = too long
+    return [f"#define CASES {len(QUESTIONS)}", c_array("in_text", "char", text),
+            c_array("out_ids", "unsigned char", ids), c_array("out_len", "unsigned char", lens)]
+
+
+GENERATORS = {"prim": vec_prim, "tokenizer": vec_tokenizer, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
               "layernorm": vec_layernorm, "gelu": vec_gelu, "residual": vec_residual, "logits": vec_logits,
               "attention": vec_attention, "model": vec_model}
 
