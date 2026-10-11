@@ -171,7 +171,36 @@ def vec_linear(m, rng):
             c_array("out_acc", "int", out), c_array("out_unit", "int", unit)]
 
 
-GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear}
+# ---- layernorm.s ----------------------------------------------------------------------
+def ln_params(m, pre, idx):
+    """The LayerNorm parameters as stored in the image: gains as log8 bytes, shifted biases."""
+    g = log8_bytes(m.img[pre + "g.neg"], m.img[pre + "g.e"])
+    b = intengine.shift(m.img[pre + "b.i"], m.F_ln - m.img[pre + "b.s"])
+    return g, b, m.img[pre + "g.k"]
+
+
+def vec_layernorm(m, rng):
+    lns = [f"h{i}.ln{j}." for i in range(m.cfg.n_layer) for j in (1, 2)] + ["lnf."]
+    cases = [(embed(m, 3, 0), 0), (embed(m, 200, 63), 1),
+             (rng.integers(-20000, 20000, (1, 32)), len(lns) - 1),          # final LayerNorm
+             (rng.integers(-300, 300, (1, 32)), 5), (np.full((1, 32), 1234), 2)]   # constant: d = 0
+    x, g, b, kg, acc, unit = [], [], [], [], [], []
+    for xi, idx in cases:
+        gi, bi, ki = ln_params(m, lns[idx], idx)
+        a, u = m.layernorm(xi, lns[idx])
+        x += list(xi[0])
+        g += list(gi)
+        b += list(bi)
+        kg.append(ki)
+        acc += list(a[0])
+        unit += list(u[0])
+    return [f"#define CASES {len(cases)}", c_array("in_x", "int", x), c_array("in_g", "unsigned char", g),
+            c_array("in_b", "int", b), c_array("in_kg", "int", kg),
+            c_array("out_acc", "int", acc), c_array("out_unit", "int", unit)]
+
+
+GENERATORS = {"prim": vec_prim, "matmul": vec_matmul, "log8": vec_log8, "linear": vec_linear,
+              "layernorm": vec_layernorm}
 
 
 def main():
