@@ -36,6 +36,11 @@ $(OBJ)/%.o: src/%.s $(GEN)/stamp
 	$(MKDIR) $(OBJ)
 	ca65 -I $(GEN) --bin-include-dir $(GEN) -o $@ $<
 
+# helpers of the unit tests written in assembler
+$(OBJ)/%.o: tests/unit/%.s
+	$(MKDIR) $(OBJ)
+	ca65 -o $@ $<
+
 # - TESTS --------------------------------------------------------------------
 test: pytest unit
 
@@ -45,8 +50,9 @@ pytest:
 
 # 6502 unit tests on sim65: tests/unit/test_<name>.c against the vectors of the
 # Python engine, linked with the modules listed in UNIT_<name>
-UNIT_TESTS = prim
+UNIT_TESTS = prim matmul
 UNIT_prim = prim
+UNIT_matmul = matmul buffers aligned
 
 unit: $(UNIT_TESTS:%=$(TEST)/%.ok)
 

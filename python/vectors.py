@@ -12,7 +12,10 @@ from pathlib import Path
 
 import numpy as np
 
+import export
 from chatcbm import intengine
+
+ZERO = intengine.ZERO
 
 
 def c_array(name, ctype, vals):
@@ -37,7 +40,61 @@ def vec_prim(m, rng):
             c_array("pow_out", "long", t.pow2_16(e))]
 
 
-GENERATORS = {"prim": vec_prim}
+# ---- real intermediate values of the model -------------------------------------------
+def embed(m, tok, pos):
+    """Residual stream after the embeddings of one token at one position: int (1, 32)."""
+    t, img = m.t, m.img
+
+    def emb(name, row):
+        codes = img[name + ".q"][[row]]
+        L = img[name + ".k"][[row]][:, None] - intengine.NF4_EXP[codes]
+        return t.to_fixed(intengine.NF4_SIGN[codes], L, intengine.NF4_EXP[codes] == ZERO, m.R)
+    return emb("wte", tok) + emb("wpe", pos)
+
+
+def log8_input(m, tok, pos, ln="h0.ln1."):
+    """Input of the first linear layer for a token: (sign, e, k) log8 of the LayerNorm output."""
+    return m.to_log8(m.layernorm(embed(m, tok, pos), ln))
+
+
+def random_log8(rng, zeros=4):
+    s = rng.integers(0, 2, (1, 32)).astype(bool)
+    e = rng.integers(0, 127, (1, 32))
+    e[0, rng.choice(32, zeros, replace=False)] = ZERO
+    return s, e, np.zeros((1, 1), np.int64)
+
+
+def kernel_sums(m, wname, x):
+    """The products of a linear layer without bias: what src/matmul.s accumulates."""
+    sx, ex, _ = x
+    sw, ew, _ = m.W[wname]
+    prod = np.where((ex[:, :, None] == ZERO) | (ew[None] == ZERO), 0, m.t.prod[ex[:, :, None] + ew[None]])
+    return np.where(sx[:, :, None] ^ sw[None], -prod, prod).sum(1)[0]
+
+
+def image(m):
+    return export.build_image(m.img, m.cfg, m.t)
+
+
+# ---- matmul.s: one 32 x 32 block of packed nf4 weights -----------------------------
+def vec_matmul(m, rng):
+    b = image(m)
+    cases = [("h0.attn.wq", "W_0_wq", log8_input(m, 3, 0)), ("h0.attn.wv", "W_0_wv", log8_input(m, 100, 5)),
+             ("h2.ffn.w1", "W_2_w1", log8_input(m, 42, 9, "h2.ln2.")), ("h1.attn.wo", "W_1_wo", random_log8(rng))]
+    w, xs, xe, acc = [], [], [], []
+    for wname, block, x in cases:
+        w += list(b.data[b.offsets[block]:b.offsets[block] + 512])
+        xs += list(np.where(x[0][0], 128, 0))
+        xe += list(x[1][0])
+        acc += list(kernel_sums(m, wname, x))
+    return [f"#define CASES {len(cases)}", c_array("weights", "unsigned char", w),
+            c_array("prod", "unsigned char", m.img["t.prod"]),
+            c_array("nf4log", "unsigned char", export.log8_bytes(np.arange(16))),
+            c_array("in_s", "unsigned char", xs), c_array("in_e", "unsigned char", xe),
+            c_array("out_acc", "int", acc)]
+
+
+GENERATORS = {"prim": vec_prim, "matmul": vec_matmul}
 
 
 def main():
