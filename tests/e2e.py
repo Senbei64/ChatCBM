@@ -4,14 +4,15 @@
     python tests/e2e.py sim65           # build/sim65/chatcbm.prg in sim65
     python tests/e2e.py c64             # build/c64/chatcbm-test.prg in VICE (x64sc in PATH)
 
-Writes the questions to build/e2e/<target>/QUESTIONS and the expected answers to
+Writes the questions to build/e2e/<target>/questions and the expected answers to
 build/e2e/<target>/expected: for every question the greedy answer and the answer sampled
-with seed 2026 (temperature 0.6, top-p 0.9). The program writes its answers to ANSWERS:
+with seed 2026 (temperature 0.6, top-p 0.9). The program writes its answers to answers:
 
 - sim65 runs the program with the two file names as arguments;
 - VICE maps disk drive 8 to the directory (host file system, no true drive emulation);
-  the test build of the C64 program reads QUESTIONS and writes ANSWERS with the kernal
-  file routines, then executes a JAM instruction: with -jamaction 5 VICE quits.
+  the test build of the C64 program opens QUESTIONS and ANSWERS (lower case on the host)
+  with the kernal file routines, then executes a JAM instruction: with -jamaction 5 VICE
+  quits.
 
 Questions do not go through the VICE keyboard buffer (-keybuf): VICE writes it into
 memory while the program is computing with the kernal zero page swapped out.
@@ -57,7 +58,7 @@ def expected_answers(models):
 
 def run_sim65(work):
     prg = ROOT / "build" / "sim65" / "chatcbm.prg"
-    subprocess.run(["sim65", str(prg), str(work / "QUESTIONS"), str(work / "ANSWERS")], check=True)
+    subprocess.run(["sim65", str(prg), str(work / "questions"), str(work / "answers")], check=True)
 
 
 def run_vice(work, vice, screenshot):
@@ -81,7 +82,7 @@ def main():
     work = ROOT / "build" / "e2e" / args.target
     shutil.rmtree(work, ignore_errors=True)
     work.mkdir(parents=True)
-    (work / "QUESTIONS").write_text("\n".join(QUESTIONS) + "\n", encoding="ascii", newline="\n")
+    (work / "questions").write_text("\n".join(QUESTIONS) + "\n", encoding="ascii", newline="\n")
     expected = expected_answers(Path(args.models))
     (work / "expected").write_text(expected, encoding="ascii", newline="\n")
 
@@ -89,7 +90,7 @@ def main():
         run_sim65(work)
     else:
         run_vice(work, args.vice, args.screenshot)
-    answers = work / "ANSWERS"
+    answers = work / "answers"
     if not answers.exists():
         sys.exit(f"{args.target}: no answers ({answers})")
     got = answers.read_text(encoding="ascii")

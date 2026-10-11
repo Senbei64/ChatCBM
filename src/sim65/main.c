@@ -3,9 +3,9 @@
 /* ChatCBM on sim65, the 6502 simulator of cc65.
 
      sim65 chatcbm.prg                      chat: one question per line from stdin
-     sim65 chatcbm.prg QUESTIONS ANSWERS    test: for every line of QUESTIONS write the
+     sim65 chatcbm.prg questions answers    test: for every line of questions write the
                                             greedy answer and the answer sampled with
-                                            seed 2026, one per line, to ANSWERS
+                                            seed 2026, one per line, to answers
 
    Everything runs in the 6502 modules of src/; this file only reads lines and writes
    characters, the machine-dependent part. The test protocol is the same as on the C64

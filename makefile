@@ -1,7 +1,7 @@
 #- ChatCBM - Copyright 2026 Fabio Carignano ----------------------------------
 
 # main make targets
-.PHONY: all corpus train qat compile model evaluate chat test pytest unit system clean
+.PHONY: all prg corpus train qat compile model evaluate chat test pytest unit system e2e clean
 
 # keep intermediate files
 .SECONDARY:
@@ -23,7 +23,10 @@ OBJ = build/obj
 TEST = build/test
 
 # - BUILD --------------------------------------------------------------------
-all: test
+all: prg test
+
+# the C64 program and its test build (questions from a file, for tests/e2e.py)
+prg: build/c64/chatcbm.prg build/c64/chatcbm-test.prg
 
 # files generated from the model, the tokenizer and the Python engine
 $(GEN)/stamp: models/model_int.npz models/tokenizer.json python/export.py python/vectors.py               python/chatcbm/intengine.py python/chatcbm/tokenizer.py
@@ -49,6 +52,23 @@ $(OBJ)/sim65_main.o: src/sim65/main.c
 	$(MKDIR) $(OBJ)
 	cl65 -t sim6502 -c -O -o $@ $<
 
+# C64: the main program comes first, its zero page must stay below the kernal's
+build/c64/chatcbm.prg: $(OBJ)/c64_main.o $(ENGINE_OBJ) src/c64/c64.cfg
+	$(MKDIR) build/c64
+	ld65 -C src/c64/c64.cfg -m build/c64/chatcbm.map -o $@ $(filter %.o,$^)
+
+build/c64/chatcbm-test.prg: $(OBJ)/c64_test.o $(ENGINE_OBJ) src/c64/c64.cfg
+	$(MKDIR) build/c64
+	ld65 -C src/c64/c64.cfg -o $@ $(filter %.o,$^)
+
+$(OBJ)/c64_main.o: src/c64/main.s
+	$(MKDIR) $(OBJ)
+	ca65 -o $@ $<
+
+$(OBJ)/c64_test.o: src/c64/main.s
+	$(MKDIR) $(OBJ)
+	ca65 -D C64_TEST=1 -o $@ $<
+
 # helpers of the unit tests written in assembler
 $(OBJ)/%.o: tests/unit/%.s
 	$(MKDIR) $(OBJ)
@@ -64,6 +84,10 @@ pytest:
 # end to end on sim65: the whole program answers as the Python engine
 system: build/sim65/chatcbm.prg
 	$(PYTHON) tests/e2e.py sim65
+
+# end to end on the C64, in VICE (x64sc in PATH): not in the CI, Ubuntu's VICE has no ROMs
+e2e: build/c64/chatcbm-test.prg
+	$(PYTHON) tests/e2e.py c64
 
 # 6502 unit tests on sim65: tests/unit/test_<name>.c against the vectors of the
 # Python engine, linked with the modules listed in UNIT_<name>
