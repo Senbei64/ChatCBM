@@ -1,7 +1,7 @@
 #- ChatCBM - Copyright 2026 Fabio Carignano ----------------------------------
 
 # main make targets
-.PHONY: all clean
+.PHONY: all corpus clean
 
 # keep intermediate files
 .SECONDARY:
@@ -19,6 +19,11 @@ TOUCH = $(PYTHON) -c "import sys; open(sys.argv[1], 'w').close()"
 
 # - BUILD --------------------------------------------------------------------
 all:
+
+# - MODEL --------------------------------------------------------------------
+# training data: a small controlled world of animals (deterministic)
+corpus:
+	$(PYTHON) python/corpus.py
 
 # - CLEAN --------------------------------------------------------------------
 clean:
