@@ -60,7 +60,8 @@ short stories about one or two animals.
 
 ## Try it
 
-Load and run `chatcbm.prg` (built in `build/c64/`, or the artifact of the CI) on a C64 or in
+Download `chatcbm.prg` from the [latest release](https://github.com/Senbei64/ChatCBM/releases/latest)
+(or build it in `build/c64/`), then load and run it on a C64 or in
 VICE: `x64sc -autostartprgmode 1 -autostart build/c64/chatcbm.prg`. Type a question and press
 RETURN; `/f` toggles the fast mode, `/q` resets the machine. On a PC, `make chat` talks to
 the same integer engine in Python.
